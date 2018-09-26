@@ -19,7 +19,6 @@ once you have done you can access the sdk packages methods.
 ---------------------------------------
 */
 
-
 import (
 	"./DBConnection"
 	"./maps"
@@ -36,6 +35,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"runtime"
+	"sync"
+	"./GoRoutines"
 )
 
 type server_model struct {
@@ -98,15 +100,54 @@ func createInstance(w http.ResponseWriter, r *http.Request)  {
 
 }
 
+// using wait group for sync the routine with main go routine
+var wg	= sync.WaitGroup{}
+
+var i int
+
+// using mutex to resolve concurrency problem
+var m	= sync.RWMutex{}
+
 func main() {
 
-	GetImageIds();
+
+	//GetImageIds();
+	for i=0;i<10 ;i++  {
+		wg.Add(2)
+
+		m.RLock()
+		go GoRoutines.PrintHello(wg,m);
+
+		//log.Printf("before m.lock")
+		m.Lock()
+		go GoRoutines.Increment(wg,m);
+	}
+	wg.Wait()
+
+	fmt.Printf("threads %v",runtime.GOMAXPROCS(-1));
 	router := mux.NewRouter()
 	router.HandleFunc("/findAllModels", findAllModels).Methods("GET")
 	router.HandleFunc("/createInstance",createInstance).Methods("POST")
 	http.ListenAndServe(":8080",router)
+
+
 }
 
+
+var counter int =0;
+
+
+func PrintHello()  {
+	fmt.Printf("Hello %d\n",counter)
+	m.RUnlock()
+	wg.Done()
+}
+
+func Increment()  {
+	counter++;
+	m.Unlock()
+	wg.Done()
+}
 
 /*
 for fetching sts token for creating session
