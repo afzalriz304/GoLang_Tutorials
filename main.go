@@ -35,7 +35,9 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"runtime"
 	"sync"
+	"./Channels"
 	"./interfaceImpl"
 )
 
@@ -110,35 +112,37 @@ var m	= sync.RWMutex{}
 func main() {
 
 
-	/*//GetImageIds();
+
+	//GetImageIds();
 	for i=0;i<10 ;i++  {
+
 		wg.Add(2)
 
 		m.RLock()
-		go GoRoutines.PrintHello(wg,m);
+		go PrintHello();
 
 		//log.Printf("before m.lock")
 		m.Lock()
-		go GoRoutines.Increment(wg,m);
+		go Increment();
 	}
-	wg.Wait()
 
-	fmt.Printf("threads %v",runtime.GOMAXPROCS(-1));*/
-
-	//go Channels.ImplementingChannels()
-
-
-	/*n:= 3;
+	n:= 3;
 	fmt.Println("Implementing channels")
 	fmt.Println("number is",n);
-
 	ch := make(chan int)
 
-	go Channels.ImplementingChannels(n,ch)
 
-	fmt.Println("After calculation",<-ch)*/
+	go Channels.ImplementingChannels(n,ch)
+	fmt.Println("After calculation",<-ch)
+
+	wg.Wait()
+
+	fmt.Printf("threads %v \n",runtime.GOMAXPROCS(-1));
+
 
 	interfaceImpl.InterfaceImpl()
+
+
 	router := mux.NewRouter()
 	router.HandleFunc("/findAllModels", findAllModels).Methods("GET")
 	router.HandleFunc("/createInstance",createInstance).Methods("POST")
