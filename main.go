@@ -9,18 +9,20 @@ go get -u github.com/aws/aws-sdk-go/...
 
 once you have done you can access the sdk packages methods.
 ---------------------------------------
--------_________------_______-----------
------ / /______/-----/ ____--/----------
------/ /--___-------/ /---/-/-----------
-----/ /--/_--/-----/ /---/-/------------
----/ /____/ /-----/ /___/-/-------------
---/________/-----/_______/--------------
+-------_________------_______----------
+----- / /______/-----/ ____--/---------
+-----/ /--___-------/ /---/-/----------
+----/ /--/_--/-----/ /---/-/-----------
+---/ /____/ /-----/ /___/-/------------
+--/________/-----/_______/-------------
 ---------------------------------------
 ---------------------------------------
 */
 
 import (
+	"./Channels"
 	"./DBConnection"
+	"./interfaceImpl"
 	"./maps"
 	"encoding/json"
 	"fmt"
@@ -37,17 +39,15 @@ import (
 	"net/http"
 	"runtime"
 	"sync"
-	"./Channels"
-	"./interfaceImpl"
 )
 
-type server_model struct {
-	model string `json:"model"`
-	cpu int
-	memory string
-	cpu_credit_per_hour int
-	storage string
-}
+/*type server_model struct {
+	Model string `json:"model"`
+	Cpu int `json:"cpu"`
+	Memory string `json:"memory"`
+	Cpu_credit_per_hour int `json:"cpu_credit_per_hour"`
+	Storage string `json:"storage"`
+}*/
 
 
 type instance struct {
@@ -101,6 +101,30 @@ func createInstance(w http.ResponseWriter, r *http.Request)  {
 
 }
 
+func addModel(w http.ResponseWriter, r *http.Request)  {
+
+	w.Header().Set("Content-Type","application/json")
+
+
+	Model_data := DBConnection.Server_model{}
+	json.NewDecoder(r.Body).Decode(&Model_data);
+
+	json.NewEncoder(w).Encode(DBConnection.AddModel(Model_data));
+
+}
+
+func findModelByModelName(w http.ResponseWriter, r *http.Request)  {
+	params := mux.Vars(r);
+	w.Header().Set("Content-Type","application/json")
+
+	json.NewEncoder(w).Encode(DBConnection.FindModel(params["model"]));
+}
+
+func deleteModelByModelName(w http.ResponseWriter, r *http.Request)  {
+	params := mux.Vars(r);
+	json.NewEncoder(w).Encode(DBConnection.DeleteModel(params["model"]));
+
+}
 // using wait group for sync the routine with main go routine
 var wg	= sync.WaitGroup{}
 
@@ -146,12 +170,21 @@ func main() {
 	router := mux.NewRouter()
 	router.HandleFunc("/findAllModels", findAllModels).Methods("GET")
 	router.HandleFunc("/createInstance",createInstance).Methods("POST")
+	router.HandleFunc("/addModel",addModel).Methods("POST");
+	router.HandleFunc("/findModel/{model}",findModelByModelName).Methods("GET");
+	router.HandleFunc("/deleteModel/{model}",deleteModelByModelName).Methods("GET");
+	router.HandleFunc("/fetchInstances",fetchAWSInstances).Methods("GET");
 	http.ListenAndServe(":8080",router)
 
 
 }
 
+func fetchAWSInstances(w http.ResponseWriter, r *http.Request)  {
 
+	w.Header().Set("Content-Type","application/json")
+
+	json.NewEncoder(w).Encode(FetchInstance());
+}
 
 var counter int =0;
 
@@ -320,7 +353,7 @@ func sessionCreatetion() *ec2.EC2 {
 }
 
 
-func FetchInstance()  {
+func FetchInstance()  *ec2.DescribeInstancesOutput {
 
 	svc := sessionCreatetion();
 
@@ -328,10 +361,11 @@ func FetchInstance()  {
 	if err != nil {
 		fmt.Println("Error", err)
 	} else {
-		fmt.Println("Success", result)
+		fmt.Println("Success")
+		return result;
 	}
 
-
+	return nil
 }
 
 func GetImageIds()  {

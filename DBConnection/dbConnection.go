@@ -22,7 +22,7 @@ func DbConc() *sql.DB  {
 	return db;
 }
 
-type server_model struct {
+type Server_model struct {
 	Model string `json:"model"`
 	Cpu int		`json:"cpu"`
 	Memory string	`json:"memory"`
@@ -48,6 +48,87 @@ type user struct {
 	userid int
 }
 
+func AddModel(data Server_model)  string {
+
+	fmt.Println(data);
+	db := DbConc();
+
+	stmt, err := db.Prepare("INSERT server_model SET model=?,cpu=?,memory=?,cpu_credit_per_hour=?,storage=?")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	res, err := stmt.Exec(data.Model,data.Cpu,data.Memory,data.Cpu_credit_per_hour,data.Storage);
+	if err!=nil {
+		panic(err.Error())
+	}
+
+	defer db.Close();
+	defer stmt.Close();
+
+	row, err := res.RowsAffected();
+
+	if(row>0){
+		return "Sucessfully added model";
+	}
+	return "Something went wrong";
+
+}
+
+func FindModel(mod string) Server_model {
+	db:=DbConc()
+
+	var (
+		model string
+		cpu int
+		memory string
+		cpu_credit_per_hour int
+		storage string
+	)
+
+	query := "select * from server_model where model=?";
+
+	find, err := db.Query(query,mod)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	modelData := Server_model{}
+	for find.Next()  {
+		err := find.Scan(&model,&cpu,&memory,&cpu_credit_per_hour,&storage)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		modelData.Memory 	= model
+		modelData.Cpu		= cpu
+		modelData.Storage	= storage
+		modelData.Cpu_credit_per_hour = cpu_credit_per_hour
+		modelData.Model 	= model
+	}
+	return modelData;
+}
+
+func DeleteModel(mod string) string {
+	db := DbConc();
+
+	query := "delete from server_model where model = ?"
+
+	stmt, err := db.Prepare(query);
+	if err !=nil{
+		panic(err.Error())
+	}
+	res, err := stmt.Exec(mod)
+
+	row, err := res.RowsAffected();
+
+	if(row>0){
+		return "data deleted successfully";
+	}
+	return "No data to delete";
+
+
+}
 
 func FindUser()  {
 	db := DbConc();
@@ -71,7 +152,7 @@ func FindUser()  {
 
 
 
-func FindAllModels() []server_model {
+func FindAllModels() []Server_model {
 	var (
 		model string
 		cpu int
@@ -80,8 +161,8 @@ func FindAllModels() []server_model {
 		storage string
 	)
 
-	S_model := server_model{}
-	models	:=	[]server_model{}
+	S_model := Server_model{}
+	models	:=	[]Server_model{}
 
 	db := DbConc();
 	result, err := db.Query("SELECT * FROM server_model");
