@@ -48,6 +48,14 @@ type user struct {
 	userid int
 }
 
+type DuplicateModel struct {
+	msg string
+}
+
+func (err *DuplicateModel) Error() string  {
+	return err.msg;
+}
+
 func AddModel(data Server_model)  string {
 
 	fmt.Println(data);
@@ -60,6 +68,7 @@ func AddModel(data Server_model)  string {
 
 	res, err := stmt.Exec(data.Model,data.Cpu,data.Memory,data.Cpu_credit_per_hour,data.Storage);
 	if err!=nil {
+		//return &DuplicateModel{"Dupliate Model"};
 		panic(err.Error())
 	}
 
