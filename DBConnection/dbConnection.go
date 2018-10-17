@@ -84,6 +84,33 @@ func AddModel(data Server_model)  string {
 
 }
 
+func FindModelName() []string {
+	db:=DbConc()
+
+	var (
+		model string
+	)
+
+	query := "select model from server_model";
+
+	find, err := db.Query(query)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	modelName := []string{}
+
+	for find.Next()  {
+		err := find.Scan(&model)
+		if err != nil {
+			panic(err.Error())
+		}
+
+		modelName 	= append(modelName, model)
+	}
+	return modelName;
+}
+
 func FindModel(mod string) Server_model {
 	db:=DbConc()
 

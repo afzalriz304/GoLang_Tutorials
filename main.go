@@ -20,9 +20,7 @@ once you have done you can access the sdk packages methods.
 */
 
 import (
-	"./Channels"
 	"./DBConnection"
-	"./interfaceImpl"
 	"./maps"
 	"encoding/json"
 	"fmt"
@@ -32,13 +30,14 @@ import (
 	"github.com/aws/aws-sdk-go/aws/session"
 	"github.com/aws/aws-sdk-go/service/ec2"
 	"github.com/aws/aws-sdk-go/service/sts"
+	"github.com/go-redis/redis"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/gorilla/mux"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"runtime"
 	"sync"
+	"time"
 )
 
 /*type server_model struct {
@@ -57,6 +56,13 @@ type instance struct {
 	Model string `json:"model"`
 	ImageId string`json:"imageId"`
 }
+type CredAWS struct {
+	AccessKeyId string `json:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key"`
+	SessionToken string `json:"session_token"`
+	Expiration time.Time `json:"expiration"`
+}
+
 
 type Tags struct {
 	Key string `json:"key"`
@@ -130,6 +136,8 @@ var wg	= sync.WaitGroup{}
 
 var i int
 
+var Redis_Client redis.Client;
+
 // using mutex to resolve concurrency problem
 var m	= sync.RWMutex{}
 
@@ -137,7 +145,7 @@ func main() {
 
 
 
-	//GetImageIds();
+	/*//GetImageIds();
 	for i=0;i<10 ;i++  {
 
 		wg.Add(2)
@@ -164,23 +172,103 @@ func main() {
 	fmt.Printf("threads %v \n",runtime.GOMAXPROCS(-1));
 
 
-	interfaceImpl.InterfaceImpl()
+	interfaceImpl.InterfaceImpl()*/
 
+	Redis_Client = *CreateRedisClient();
 
 	router := mux.NewRouter()
+	router.HandleFunc("/",checkServer).Methods("GET")
 	router.HandleFunc("/findAllModels", findAllModels).Methods("GET")
 	router.HandleFunc("/createInstance",createInstance).Methods("POST")
 	router.HandleFunc("/addModel",addModel).Methods("POST");
 	router.HandleFunc("/findModel/{model}",findModelByModelName).Methods("GET");
 	router.HandleFunc("/deleteModel/{model}",deleteModelByModelName).Methods("GET");
 	router.HandleFunc("/fetchInstances",fetchAWSInstances).Methods("GET");
+	router.HandleFunc("/createAWSCredentials/{token}",createAWSCredentials).Methods("GET")
 	http.ListenAndServe(":8080",router)
 
 
 }
 
+func CreateRedisClient()  *redis.Client {
+	client := redis.NewClient(&redis.Options{
+		Addr:     "localhost:6379",
+		Password: "", // no password set
+		DB:       0,  // use default DB
+	})
+
+	pong, err := client.Ping().Result()
+	if err!=nil{
+		panic(err.Error());
+	}else {
+		fmt.Println("Success making connection with redis",pong)
+	}
+
+	return client;
+}
+
+func createAWSCredentials(w http.ResponseWriter,r *http.Request)  {
+	enableCros(&w);
+	params := mux.Vars(r);
+	w.Header().Set("Content-Type","application/json")
+	response := GetSToken(params["token"]);
+
+	fmt.Println(response);
+	Redis_Client.Set("AccessKeyId",*response.AccessKeyId,0).Err();
+	Redis_Client.Set("SecretAccessKey",*response.SecretAccessKey,0).Err();
+	err := Redis_Client.Set("SessionToken",*response.SessionToken,0).Err();
+	if err != nil{
+		panic(err)
+	}
+
+	json.NewEncoder(w).Encode(response);
+}
+
+
+//fetch Temp credentials from redis server
+func FetchCredentialsFromRedis() CredAWS {
+	AccessKeyId ,err := Redis_Client.Get("AccessKeyId").Result();
+	SecretAccessKey ,err1 := Redis_Client.Get("SecretAccessKey").Result();
+	SessionToken ,err2 := Redis_Client.Get("SessionToken").Result();
+	if(err!=nil){
+		panic(err)
+	}
+	if(err1!=nil){
+		panic(err1)
+	}
+	if(err2!=nil){
+		panic(err2)
+	}
+
+	Credentials_Aws := CredAWS{}
+
+	Credentials_Aws.AccessKeyId = AccessKeyId
+	Credentials_Aws.SecretAccessKey = SecretAccessKey
+	Credentials_Aws.SessionToken = SessionToken
+
+	return Credentials_Aws;
+
+}
+
+//enabling cross origin
+func enableCros(w *http.ResponseWriter)  {
+	(*w).Header().Set("Access-Control-Allow-Origin", "*")
+}
+
+
+func checkServer(w http.ResponseWriter, r *http.Request)  {
+	enableCros(&w);
+	w.Header().Set("Content-Type","application/json")
+
+	dashboardData	:= make(map[string]interface{})
+	dashboardData["status"] = true;
+	dashboardData["modelList"]	=	DBConnection.FindModelName();
+	json.NewEncoder(w).Encode(dashboardData);
+}
+
 func fetchAWSInstances(w http.ResponseWriter, r *http.Request)  {
 
+	enableCros(&w);
 	w.Header().Set("Content-Type","application/json")
 
 	json.NewEncoder(w).Encode(FetchInstance());
@@ -204,14 +292,14 @@ func Increment()  {
 /*
 for fetching sts token for creating session
 */
-func GetSToken() *sts.Credentials{
+func GetSToken(token string) *sts.Credentials{
 
-
+	fmt.Println(token);
 	svc := sts.New(session.New())
 	input := &sts.GetSessionTokenInput{
-		DurationSeconds: aws.Int64(3600),
-		SerialNumber:    aws.String("< your mfa arn >"),
-		TokenCode:       aws.String("< google authenticator code >"),
+		DurationSeconds: aws.Int64(7200),
+		SerialNumber:    aws.String("arn:aws:iam::294069028655:mfa/mohammad.afzal"),
+		TokenCode:       aws.String(token),
 	}
 
 	result, err := svc.GetSessionToken(input)
@@ -241,7 +329,7 @@ first you have to call get session Token and uses that credentials
 func CreateInstanceWithMFA()  {
 
 
-	creds := GetSToken();
+	creds := GetSToken("aaa");
 	log.Println("creating instance......")
 	sess, err := session.NewSession(&aws.Config{
 		Credentials: credentials.NewStaticCredentials(*creds.AccessKeyId, *creds.SecretAccessKey, *creds.SessionToken),
@@ -338,13 +426,24 @@ For Session Creating
 */
 func sessionCreatetion() *ec2.EC2 {
 
+	creds := FetchCredentialsFromRedis();
 	// Load session from shared config
-	sess := session.Must(session.NewSessionWithOptions(session.Options{
+	/*sess := session.Must(session.NewSessionWithOptions(session.Options{
 		SharedConfigState: session.SharedConfigEnable,
 		Config:aws.Config{
 			Region:aws.String("us-east-1"),
 		},
-	}))
+	}))*/
+
+
+	sess, err := session.NewSession(&aws.Config{
+		Credentials: credentials.NewStaticCredentials(creds.AccessKeyId, creds.SecretAccessKey, creds.SessionToken),
+	})
+
+	if err!=nil {
+		panic(err);
+	}
+	log.Println("created session");
 
 	// Create new EC2 client
 	svc := ec2.New(sess)
@@ -366,6 +465,20 @@ func FetchInstance()  *ec2.DescribeInstancesOutput {
 	}
 
 	return nil
+}
+
+func MonitorInstance(id *string) *ec2.MonitorInstancesOutput  {
+	inst := ec2.MonitorInstancesInput{}
+	inst.InstanceIds = append(inst.InstanceIds, id);
+
+	svc := sessionCreatetion();
+	result, err := svc.MonitorInstances(&inst);
+	if(err!=nil){
+
+	}else{
+		return result;
+	}
+	return nil;
 }
 
 func GetImageIds()  {
